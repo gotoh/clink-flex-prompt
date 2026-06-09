@@ -832,7 +832,7 @@ local function render_lbubble(args, shorten) -- luacheck: no unused
         addcsep(segments, sep, gray3)
     else
         addcsep(segments, sep, gray2)
-        if info.type or info.branch or info.working or info.detached then
+        if info.branch or info.working or info.detached then
             local which = which_icon(info)
             local icon = flexprompt.get_symbol(which)
             if which == "detached" and (icon == "" or flexprompt.get_flow() == "fluent") then
