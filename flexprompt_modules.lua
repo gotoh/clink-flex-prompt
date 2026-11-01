@@ -46,6 +46,31 @@ local function parse_color_token(args, colors)
     return color, altcolor
 end
 
+local disable
+local function detect_disable()
+    disable = nil
+    if clink.getclinkprompt then
+        local name, _, _, dependson = clink.getclinkprompt()
+        disable = (name and name ~= "" and not dependson["flexprompt"])
+    end
+end
+
+local function save_variables(var_list)
+    local saved = {}
+    for _, name in ipairs(var_list) do
+        saved[name] = rl.getvariable(name)
+    end
+    return saved
+end
+
+local function restore_variables(saved)
+    if saved then
+        for name, value in pairs(saved) do
+            rl.setvariable(name, value)
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- ADMIN MODULE:  {admin:always:forcetext:text_options:icon_options:color_options}
 --  - 'always' shows the module even when not running as an Administrator.
@@ -1483,14 +1508,24 @@ end
 -- Requires Clink v1.2.50 or higher.
 
 local _keymap
+local _prev_mode_strings
 
 local function keymap_onbeginedit()
     _keymap = rl.getvariable("keymap")
 
-    if flexprompt.is_module_in_prompt("keymap") then
-        rl.setvariable("emacs-mode-string", "")
-        rl.setvariable("vi-cmd-mode-string", "")
-        rl.setvariable("vi-ins-mode-string", "")
+    if not disable and flexprompt.is_module_in_prompt("keymap") then
+        local var_list = { "emacs-mode-string", "vi-cmd-mode-string", "vi-ins-mode-string" }
+        _prev_mode_strings = save_variables(var_list)
+        for _, name in ipairs(var_list) do
+            rl.setvariable(name, "")
+        end
+    end
+end
+
+local function keymap_onendedit()
+    if _prev_mode_strings then
+        restore_variables(_prev_mode_strings)
+        _prev_mode_strings = nil
     end
 end
 
@@ -1694,16 +1729,25 @@ end
 
 local _modmark
 local _modifiedline
-
-if rl.ismodifiedline then
-    _modmark = rl.isvariabletrue("mark-modified-lines")
-    rl.setvariable("mark-modified-lines", "off")
-end
+local _prev_modmark
 
 local function modmark_onbeginedit()
+    if not disable and not _prev_modmark then
+        _prev_modmark = save_variables({ "mark-modified-lines" })
+        _modmark = rl.isvariabletrue("mark-modified-lines")
+        rl.setvariable("mark-modified-lines", "off")
+    end
+
     _modifiedline = nil
     if rl.ismodifiedline then
         _modifiedline = rl.ismodifiedline()
+    end
+end
+
+local function modmark_onendedit()
+    if _prev_modmark then
+        restore_variables(_prev_modmark)
+        _prev_modmark = nil
     end
 end
 
@@ -2590,13 +2634,20 @@ end
 -- for separate modules.
 
 local function builtin_modules_onbeginedit()
+    detect_disable()
     _cached_state = {}
     admin_onbeginedit()
     keymap_onbeginedit()
     modmark_onbeginedit()
 end
 
+local function builtin_modules_onendedit()
+    keymap_onendedit()
+    modmark_onendedit()
+end
+
 clink.onbeginedit(builtin_modules_onbeginedit)
+clink.onendedit(builtin_modules_onendedit)
 
 --------------------------------------------------------------------------------
 -- Initialize the built-in modules.
