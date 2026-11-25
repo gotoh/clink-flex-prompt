@@ -162,18 +162,50 @@ cp[65001] = "utf-8" -- Unicode (UTF-8)
 
 flexprompt.settings.codepages = cp
 
-local function code_page_module()
-    local pipe = io.popen("2>nul chcp")
-    if not pipe then
-        return "", ""
+local cached_cp = nil
+
+local function fetch_codepage()
+    local p = io.popen("chcp")
+    if p then
+        local out = p:read("*a")
+        p:close()
+        -- extract codepage number from response like "Active code page: 65001"
+        local cp = out and out:match(":%s*(%d+)")
+        if cp then
+            -- note: you need to set clink.debug = true
+            os.debugprint("flexprompt_codepage::fetch_codepage: codepage="..cp)
+            cached_cp = cp
+        end
     end
-    local line = pipe:read("*l") or ""
-    if line == "" then
-        pipe:close()
-        return "", ""
+end
+
+fetch_codepage()
+
+clink.onendedit(function(line)
+        local expanded = line
+        if os.resolvealias then
+            local res = os.resolvealias(line)
+            if type(res) == "table" then
+                expanded = table.concat(res, " ")
+            elseif type(res) == "string" then
+                expanded = res
+            end
+        end
+        
+        -- os.debugprint("onendedit: line=[" .. line .. "] -> expanded=[" .. expanded .. "]")
+        
+        if expanded:lower():find("chcp") then
+            cached_cp = nil
+        end
+end)
+
+local function codepage_module(args)
+    -- run 'chcp' only when cache is nil
+    if not cached_cp then
+        fetch_codepage()
     end
-    pipe:close()
-    local s = line:match(".*: ([0-9]+)")
+
+    s = cached_cp
     if s then
 	local cp = tonumber(s)
 	local codepages = flexprompt.settings.codepages
@@ -186,4 +218,4 @@ local function code_page_module()
     end
 end
 
-flexprompt.add_module("cp", code_page_module)
+flexprompt.add_module("cp", codepage_module)
